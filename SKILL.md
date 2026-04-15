@@ -1,10 +1,12 @@
 ---
 name: aio-tests-csv
-version: 1
+version: 2
 description: >
-  Genera archivos CSV para importación en AIO Tests (Jira). Cubre formato Classic,
-  formato BDD, multi-línea, datasets con parámetros, jerarquía de carpetas y
-  buenas prácticas para escribir casos de prueba claros, completos y trazables.
+  Genera, adapta y valida archivos CSV/Excel para importar casos en AIO Tests (Jira).
+  Usa esta skill siempre que el usuario quiera crear, convertir, revisar o corregir
+  archivos de importación para AIO Tests, especialmente si menciona CSV, Excel,
+  single-line, multi-line, Jira Story ID, Test Key, Test Id, datasets, folder
+  hierarchy o los formatos oficiales de AIO.
 agents: [codex, claude-code, main_agent, general_purpose]
 triggers:
   - "generar csv para aio tests"
@@ -15,283 +17,328 @@ triggers:
   - "create test cases csv aio"
 ---
 
-# AIO Tests — CSV Generation Skill
+# AIO Tests — CSV / Excel Import Skill
 
-Esta skill guía la generación de archivos `.csv` listos para importar en
-**AIO Tests for Jira** (https://www.aiotests.com).
+Esta skill guía la generación y revisión de archivos listos para importar en
+**AIO Tests for Jira** usando como **fuente de verdad** los CSV de ejemplo y la
+**documentación oficial** de AIO Tests.
 
----
+## 1. Principios base tomados de la documentación oficial
 
-## 1. Conceptos clave
+- La **primera fila** del archivo es siempre el header.
+- Los archivos sample oficiales son **ejemplos de conveniencia**, no un único
+  esquema obligatorio. La importación real se resuelve con **Field Mapping** y
+  **Data Mapping**.
+- Siempre mapear una **columna identificadora del caso** (por ejemplo `Test Id`
+  o `Test Key`) y una **columna de título** (`Summary` o `Title`) a los campos
+  correspondientes de AIO Tests.
+- Si el proyecto tiene más campos marcados como obligatorios en su configuración,
+  también deben venir informados o mapearse correctamente.
+- Si el caso tiene pasos, cada step necesita **texto de paso** y **expected result**.
+- La jerarquía de carpetas usa el delimitador `->`.
+- Los casos data-driven usan una columna aparte para datasets con `|` y parámetros
+  en pasos con `<nombreParametro>`.
+- Columnas de usuario como `Creator` pueden requerir **User Mapping**.
+- Los CSV oficiales pueden venir de Excel con codificaciones como **Windows-1252**.
+  Para archivos nuevos, preferir **UTF-8** si es posible.
+- En pantallas/documentación de AIO puede aparecer el nombre del campo destino
+  como `Existing Case ID`, aunque los archivos sample usen headers fuente como
+  `Test Id` o `Test Key`.
 
-| Concepto | Descripción |
-|---|---|
-| **Classic** | Casos de prueba con pasos numerados (Step Description + Expected Result) |
-| **BDD** | Casos en formato Gherkin (Feature / Scenario / Given / When / Then) |
-| **Single-line** | Todo el caso en una sola fila del CSV |
-| **Multi-line** | Cada paso es una fila; el caso se identifica por `Existing Case ID` repetido |
-| **Dataset** | Conjunto de parámetros para casos data-driven; separados por `pipe` (`\|`) |
-| **Parámetro en paso** | Variable en un paso encerrada en ángulos: `<nombreParam>` |
-| **Jerarquía de carpetas** | Separadas por `->`, ej.: `Auth->Login->2FA` |
+## 2. Esquemas oficiales de ejemplo
 
----
+### 2.1 Sample clásico oficial para single-line y multi-line
 
-## 2. Campos soportados
+Los archivos sample oficiales de casos clásicos usan este esquema fuente:
 
-### 2.1 Campos estándar
+- `Test Id`
+- `Summary`
+- `Priority`
+- `TestSteps`
+- `ExpectedResults`
+- `Story`
+- `Test Type`
+- `Component`
+- `Release`
+- `Status`
+- `Creator`
 
-| Columna CSV | Campo AIO Tests | Obligatorio | Notas |
-|---|---|---|---|
-| `Existing Case ID` | Existing Case ID | ✅ Sí | Número secuencial (1, 2, 3…). No es el Test Key de Jira. |
-| `Title` | Title | ✅ Sí | Título del caso. Claro, imperativo, < 120 caracteres. |
-| `Description` | Description | No | Contexto del caso. Markdown básico aceptado. |
-| `Status` | Status | No | `Active`, `Draft`, `Deprecated`. Default: `Active`. |
-| `Priority` | Priority | No | `Critical`, `High`, `Medium`, `Low`, `Lowest`. |
-| `Labels` | Labels | No | Separadas por coma: `smoke,regression,login`. |
-| `Components` | Components | No | Componente Jira del proyecto. |
-| `Folder` | Folder | No | Jerarquía con `->`. Ej.: `Auth->Login`. |
-| `Step Description` | Step Description | ✅ Si hay pasos | Qué hace el tester. Verbo imperativo. |
-| `Expected Result` | Expected Result | ✅ Si hay pasos | Resultado observable esperado. |
-| `Requirements` | Requirements | No | Jira Issue Keys separados por coma: `PROJ-10,PROJ-11`. |
-| `Datasets` | Datasets | No | Pipe-separated. Ver sección 5. |
+Cómo interpretar estas columnas:
 
-### 2.2 Campos BDD
+- `Summary` es la columna fuente del título del caso.
+- `Story` es la columna fuente para vincular requerimientos / historias.
+- `TestSteps` y `ExpectedResults` son las columnas fuente para pasos y resultados esperados.
+- Los valores de prioridad/estado/tipo en el sample son **valores fuente**, no
+  necesariamente los valores internos finales de AIO. El mapeo se hace en la pantalla
+  de **Data Mapping**.
 
-| Columna CSV | Campo AIO Tests | Obligatorio |
-|---|---|---|
-| `Feature` | Feature | ✅ Sí |
-| `Scenario` | Scenario / Title | ✅ Sí |
-| `Background` | Background | No |
-| `Given` | Given step | No |
-| `When` | When step | No |
-| `Then` | Then step | No |
-| `And` | And step | No |
-| `Template` | Test Case BDD | ✅ Para BDD |
+### 2.2 Blank template oficial
 
----
+Uno de los templates oficiales en blanco usa este header fuente:
 
-## 3. Formato Classic — Single-line
+- `Test Key`
+- `Title`
+- `Preconditions`
+- `Priority`
+- `Test Steps`
+- `Data for Steps`
+- `Expected Results`
+- `Jira Story ID`
+- `Test Type`
+- `Component`
+- `Release`
+- `Test Case Status`
+- `Creator`
 
-Cada caso ocupa **una sola fila**. Todos los pasos se concatenan en la celda
-de `Step Description` separados por salto de línea interno o numerados en texto.
+Nota importante:
 
-### Reglas
-- La primera fila es el **header**. No omitir.
-- `Existing Case ID` debe ser un entero único y secuencial (1, 2, 3…).
-- `Step Description` y `Expected Result` son **obligatorios** cuando el caso tiene pasos.
-- Si no hay pasos, dejar esas columnas vacías.
-- Encoding: **UTF-8**.
-- Separador: **coma** (`,`). Si un valor contiene comas, encerrar en comillas dobles.
+- El sample oficial en blanco actualmente puede incluir una **columna vacía extra**
+  antes de `Creator`, por ejemplo:
+  `...,Test Case Status,,Creator`
+- Si el usuario quiere replicar el archivo oficial **tal cual**, preservar esa columna.
+- Si el usuario quiere un template limpio pero compatible, se puede omitir la columna
+  vacía siempre que no se necesite mapear nada contra ella.
 
-### Ejemplo mínimo
+### 2.3 Consecuencia práctica al generar archivos
 
-```csv
-Existing Case ID,Title,Priority,Status,Folder,Step Description,Expected Result
-1,Verificar login con credenciales válidas,High,Active,Auth->Login,"1. Ingresar usuario 'admin@ejemplo.com'\n2. Ingresar contraseña correcta\n3. Clic en 'Iniciar sesión'","El usuario es redirigido al dashboard con mensaje 'Bienvenido'"
-2,Verificar login con contraseña incorrecta,High,Active,Auth->Login,"1. Ingresar usuario válido\n2. Ingresar contraseña incorrecta\n3. Clic en 'Iniciar sesión'","Se muestra error 'Contraseña incorrecta'. El usuario permanece en la pantalla de login."
-3,Verificar sesión expira tras inactividad,Medium,Active,Auth->Session,"1. Iniciar sesión\n2. Esperar 30 minutos sin actividad","El sistema cierra la sesión automáticamente y redirige a login con mensaje de expiración."
-```
+- Por defecto, **preferir uno de los esquemas oficiales** anteriores.
+- Si el usuario ya tiene una plantilla corporativa existente, **preservar sus headers**
+  y adaptar el contenido a ese formato.
+- No insistir en headers custom como `Existing Case ID`, `Step Description`,
+  `Expected Result`, `Requirements`, etc. como si fueran la única forma válida.
+- Si por alguna razón se usan headers custom, avisar que **Field Mapping manual** será necesario.
 
----
+## 3. Patrón single-line alineado al sample oficial
 
-## 4. Formato Classic — Multi-line
+En el sample single-line oficial, **cada caso ocupa una sola fila** y la columna
+`TestSteps` contiene saltos de línea internos dentro de una sola celda.
 
-Cada **paso** ocupa una fila independiente. El caso se identifica porque
-`Existing Case ID` y `Title` se **repiten** en cada fila del mismo caso.
+Reglas:
 
-### Cuándo preferir multi-line
-- Casos con más de 3 pasos.
-- Cuando se necesitan expected results individuales por paso.
-- Mejor legibilidad y edición en spreadsheets.
+- Una fila por caso.
+- `TestSteps` puede contener varias acciones separadas por saltos de línea internos.
+- Celdas con comas o saltos de línea deben ir entre comillas dobles.
+- `ExpectedResults` puede resumir el resultado esperado global del caso, siguiendo
+  el estilo del sample oficial.
+- `Story` o `Jira Story ID` pueden usarse como fuente para trazabilidad con requisitos.
 
-### Ejemplo multi-line
-
-```csv
-Existing Case ID,Title,Priority,Status,Folder,Step Description,Expected Result,Requirements
-1,Crear cuenta de usuario nueva,High,Active,Users->Registration,Navegar a /register,La página de registro se carga correctamente,PROJ-42
-1,Crear cuenta de usuario nueva,High,Active,Users->Registration,Completar el formulario con datos válidos,Todos los campos muestran validación verde,PROJ-42
-1,Crear cuenta de usuario nueva,High,Active,Users->Registration,Clic en 'Crear cuenta',Se envía email de confirmación y se muestra mensaje de éxito,PROJ-42
-2,Intentar registro con email duplicado,High,Active,Users->Registration,Navegar a /register,La página de registro se carga,PROJ-43
-2,Intentar registro con email duplicado,High,Active,Users->Registration,Ingresar email ya registrado y completar el formulario,Formulario aceptado visualmente,PROJ-43
-2,Intentar registro con email duplicado,High,Active,Users->Registration,Clic en 'Crear cuenta',Aparece error inline: 'Este email ya está en uso',PROJ-43
-```
-
-> **Regla de oro multi-line**: todos los campos no-paso (Title, Priority, Status,
-> Folder, Requirements) deben ser **idénticos** en cada fila del mismo caso.
-
----
-
-## 5. Datasets — Casos Data-Driven
-
-Para casos parametrizados, agregar una columna `Datasets` con los valores
-separados por `|` (pipe). En los pasos, usar `<nombreParametro>`.
-
-### Estructura del dataset
-
-```
-valor1Param1|valor1Param2||valor2Param1|valor2Param2
-```
-
-- Un bloque por dataset separado por `||` (doble pipe).
-- Dentro de un bloque, cada valor por campo separado por `|`.
-- El orden de valores corresponde al orden de parámetros en los pasos.
-
-### Ejemplo con dataset
+### Template single-line estilo oficial
 
 ```csv
-Existing Case ID,Title,Priority,Status,Folder,Step Description,Expected Result,Datasets
-1,Login con múltiples roles,High,Active,Auth->Roles,"1. Ingresar email '<email>'\n2. Ingresar contraseña '<password>'\n3. Clic en Iniciar sesión","El usuario '<email>' accede con rol '<expectedRole>'","admin@test.com|Admin123|Administrator||editor@test.com|Editor123|Editor||viewer@test.com|Viewer123|Viewer"
+Test Id,Summary,Priority,TestSteps,ExpectedResults,Story,Test Type,Component,Release,Status,Creator
+1,User should enter valid Pin to get access to his account.,High,"Insert valid card in the insertion point of ATM
+Enter the valid pin number
+Click on money withdrawal",ATM should display a meaningful insufficient balance message,ADP-1,Manual,,,P,Noopur
 ```
 
----
+## 4. Patrón multi-line alineado al sample oficial
 
-## 6. Formato BDD
+En el sample multi-line oficial, la **primera fila del caso** lleva los datos del caso,
+ y las **filas de continuación** dejan vacías las columnas de metadatos y sólo añaden
+ más pares `TestSteps` + `ExpectedResults`.
 
-Para casos Gherkin, agregar una columna `Template` con valor `Test Case BDD`
-y mapearla al campo `Test Case BDD` durante la importación.
+Reglas:
 
-### Ejemplo BDD
+- La primera fila del caso contiene `Test Id` y metadatos principales.
+- Las filas siguientes del mismo caso pueden dejar vacías las columnas de metadatos.
+- Cada fila de continuación representa un paso adicional.
+- No exigir que `Summary`, `Priority`, etc. se repitan en cada fila: el sample oficial no lo hace.
+- Cada fila que represente un paso debe seguir teniendo **paso + expected result**.
+- Si el equipo del usuario ya usa una convención con metadatos repetidos en cada fila,
+  se puede respetar, pero el estilo oficial de referencia es el de **continuaciones en blanco**.
+
+### Template multi-line estilo oficial
 
 ```csv
-Existing Case ID,Template,Feature,Scenario,Given,When,Then,And,Priority,Folder
-1,Test Case BDD,Autenticación,Login exitoso con credenciales válidas,el usuario está en la página de login,el usuario ingresa email 'user@test.com' y contraseña 'Pass123',el usuario es redirigido al dashboard,,High,Auth->BDD
-2,Test Case BDD,Autenticación,Login fallido con contraseña incorrecta,el usuario está en la página de login,el usuario ingresa email 'user@test.com' y contraseña 'wrongpass',el sistema muestra el mensaje 'Credenciales inválidas',el usuario permanece en la página de login,High,Auth->BDD
-3,Test Case BDD,Carrito de compras,Agregar producto al carrito,el usuario está autenticado y en la página del producto,el usuario hace clic en 'Agregar al carrito',el producto aparece en el carrito con cantidad 1,el total del carrito se actualiza correctamente,Medium,Shop->Cart->BDD
+Test Id,Summary,Priority,TestSteps,ExpectedResults,Story,Test Type,Component,Release,Status,Creator
+1,User should enter valid Pin to get access to his account.,High,Insert valid card in the insertion point of ATM,"ATM Machine should display language page with options such as ENGLISH and SPANISH",ADP-1,Manual,,,P,Noopur
+,,,Enter the valid pin number,ATM should display the account type selection page,,,,,,
+,,,Click on money withdrawal,ATM should display amount entry page.,,,,,,
+,,,Enter an amount greater than balance and click on OK,ATM should display a meaningful insufficient balance message.,,,,,,
 ```
 
----
+## 5. Field Mapping y Data Mapping son de primera clase
 
-## 7. Buenas prácticas para escribir casos de prueba
+La skill debe tratar el CSV como **esquema fuente** y a la pantalla de importación de
+AIO como la **capa canónica de mapeo**.
 
-### 7.1 Títulos
+Mapeos habituales desde los samples oficiales:
 
-| ❌ Malo | ✅ Bueno |
-|---|---|
-| `Test login` | `Verificar login exitoso con credenciales válidas` |
-| `Check cart` | `Agregar producto al carrito desde página de detalle` |
-| `Error case` | `Mostrar error al intentar login con cuenta bloqueada` |
+- `Test Id` o `Test Key` -> campo identificador del caso durante la importación
+- `Summary` o `Title` -> `Title`
+- `TestSteps` o `Test Steps` -> campo de pasos
+- `ExpectedResults` o `Expected Results` -> campo de expected result
+- `Story` o `Jira Story ID` -> vínculo con historia/requerimiento
+- `Status` o `Test Case Status` -> estado del caso
+- `Creator` -> campo de usuario si aplica
 
-**Formato recomendado para el título:**
-> `[Verbo] [Objeto] [condición/contexto]`
-> Ej.: `Verificar descuento aplicado al superar monto mínimo`
+Los valores del sample oficial deben tratarse como **valores fuente**:
 
-### 7.2 Step Description
+- Prioridades como `High`, `Med`, `Highest`
+- Estados como `P`, `F`, `NR`
+- Tipos como `Manual`, `Unit`
 
-- Usar **verbos imperativos**: Ingresar, Hacer clic, Navegar, Seleccionar, Verificar.
-- Un paso = una acción atómica.
-- Incluir datos de prueba específicos: `Ingresar '12345'` no `Ingresar número`.
-- Evitar pasos vagos: ❌ `Hacer cosas en el formulario` → ✅ `Completar campo 'Email' con 'test@ejemplo.com'`.
+No normalizar estos valores por defecto. En su lugar:
 
-### 7.3 Expected Result
+- generar el CSV siguiendo el estilo oficial si ese es el objetivo,
+- y dejar que **Data Mapping** traduzca valores como `Highest` -> `Critical`,
+  o `P` -> el estado equivalente del proyecto.
 
-- Describir un **resultado observable y verificable**.
-- Incluir: estado del sistema, mensaje mostrado, cambio en UI o datos.
-- Evitar resultados vagos: ❌ `Funciona correctamente` → ✅ `Se muestra toast verde 'Cambios guardados'`.
+Si AIO auto-mapea algo mal, indicar al usuario que puede usar:
 
-### 7.4 Prioridades
+- `Reset Mapping` para mapear desde cero
+- `Re-Initialize Mapping` para volver al auto-mapeo de AIO
 
-| Prioridad | Cuándo usar |
-|---|---|
-| `Critical` | Flujos de negocio principales (checkout, login, pago) |
-| `High` | Funcionalidades importantes pero no bloquean el core |
-| `Medium` | Funcionalidades secundarias o variaciones de flujos principales |
-| `Low` | Casos borde, escenarios poco frecuentes |
-| `Lowest` | Casos cosméticos o de UX menor |
+## 6. Columnas opcionales soportadas por la documentación
 
-### 7.5 Etiquetas (Labels) recomendadas
+Además de los headers que aparecen en los sample files, la documentación oficial deja
+claro que se pueden usar columnas adicionales siempre que se mapeen correctamente.
 
-```
-smoke         → Suite mínima de sanidad post-deploy
-regression    → Regresión completa antes de release
-happy-path    → Flujo exitoso principal
-negative      → Casos de error o datos inválidos
-edge-case     → Límites, valores extremos
-integration   → Pruebas entre sistemas/módulos
-performance   → Tiempo de respuesta o carga
-accessibility → A11y / WCAG
-security      → Autenticación, autorización, XSS, etc.
-```
+### 6.1 Folder hierarchy
 
-### 7.6 Organización de carpetas
-
-```
-Feature Principal
-└── Sub-feature
-    └── Escenario específico
+Si el usuario necesita importar casos dentro de carpetas, agregar una columna como `Folder`
+ y usar siempre `->` como separador.
 
 Ejemplos:
-  Auth->Login->Credenciales válidas
-  Auth->Login->Credenciales inválidas
-  Auth->Recuperación de contraseña
-  Shop->Carrito->Agregar producto
-  Shop->Carrito->Eliminar producto
-  Shop->Checkout->Pago exitoso
-  Shop->Checkout->Pago rechazado
-  API->Usuarios->CRUD
+
+- `Auth->Login`
+- `Auth->Login->2FA`
+- `Shop->Checkout->Rejected payment`
+
+### 6.2 Casos data-driven / datasets
+
+Para casos parametrizados:
+
+- agregar una columna separada para datasets,
+- mapear esa columna al campo `Datasets` en AIO,
+- usar `|` entre valores del mismo dataset,
+- usar `||` entre datasets,
+- y usar `<nombreParametro>` dentro de los pasos.
+
+Ejemplo:
+
+```text
+admin@test.com|Admin123||editor@test.com|Editor123
 ```
 
----
+Ejemplo de parámetro en paso:
 
-## 8. Errores comunes y cómo evitarlos
+```text
+Enter username <email>
+```
 
-| Error en importación | Causa probable | Solución |
-|---|---|---|
-| `Story not found [PROJ-XX]` | La Jira issue no existe o pertenece a otro proyecto | Verificar que el issue key sea del mismo proyecto Jira |
-| `Cannot create Test Step. Mandatory data is missing` | `Step Description` o `Expected Result` vacío cuando hay pasos | Asegurarse de que ambos campos tengan valor en cada fila de paso |
-| Campos mal mapeados | Nombres de columna CSV no coinciden con campos AIO | Usar el field mapping de la UI de importación, o usar los nombres exactos de esta skill |
-| Caracteres especiales rompen el CSV | Comas o saltos de línea sin comillas | Encerrar valores complejos en comillas dobles `"..."` |
-| Dataset no funciona | Formato de pipe incorrecto | Usar `valor1\|valor2` dentro de comillas. Doble `\|\|` entre datasets |
-| Jerarquía de carpetas no creada | Usar `/` en lugar de `->` | Usar exactamente `->` como separador de jerarquía |
-| Fechas en campos custom rechazadas | Formato no soportado | Usar formato: `8-Jun-2020` o `Jun 8, 2020` |
+### 6.3 Preconditions, Data for Steps y custom fields
 
----
+- Si el usuario quiere una plantilla estilo blank template, usar `Preconditions` y
+  `Data for Steps` cuando aplique.
+- Si el proyecto tiene **custom fields obligatorios**, incluirlos en el archivo fuente.
+- Para fechas en custom fields, respetar formatos admitidos por AIO como:
+  `8-Jun-2020`, `Jun 8, 2020`, `2020-Jun-8`.
 
-## 9. Plantilla base — Classic Multi-line (recomendada)
+## 7. BDD / Gherkin guidance
 
-Copiar y adaptar esta plantilla como punto de partida:
+AIO Tests soporta imports BDD/Gherkin mediante **BDD Excel** y también mediante
+**feature files**. Como los sample CSV proporcionados oficialmente en este contexto son
+**samples clásicos**, no imponer un esquema CSV BDD inventado como si fuera universal.
+
+Cuando el usuario pida BDD:
+
+1. aclarar si quiere:
+   - CSV clásico,
+   - BDD Excel,
+   - o `.feature` files
+2. preferir la plantilla BDD existente del proyecto si ya existe
+3. preservar `Scenario Outline` / ejemplos como datasets o examples
+4. usar tags / requirement mapping cuando el flujo del proyecto lo necesite
+
+En ausencia de una plantilla BDD real del usuario, ser explícito sobre esta limitación
+en vez de inventar headers rígidos.
+
+## 8. Encoding, higiene CSV y seguridad de importación
+
+Antes de dar por terminado un archivo:
+
+- confirmar que la primera fila sea el header
+- mantener el archivo por debajo de **100 MB**
+- encerrar entre comillas celdas con comas o saltos de línea
+- preferir **UTF-8** para archivos nuevos
+- aceptar que samples oficiales pueden venir en **cp1252 / Excel encoding**
+- no romper smart quotes ni caracteres especiales al re-guardar el archivo
+- usar coma `,` como separador salvo que el usuario pida explícitamente otra estrategia
+  por un problema local de Excel
+
+## 9. Errores comunes y cómo interpretarlos
+
+- `Story not found [Jira issue key]`
+  - El issue no existe, pertenece a otro proyecto o el valor fuente no está bien mapeado.
+
+- `Cannot create Test Step. Mandatory data is missing for the Test Step. Please provide the value for Step and Expected Result`
+  - Falta paso o expected result en alguna fila que representa un step.
+
+- Mapeo incorrecto de columnas
+  - Los headers fuente existen, pero quedaron mal asignados en Field Mapping.
+
+- Mapeo incorrecto de valores
+  - Los valores fuente (`Highest`, `P`, etc.) no se tradujeron bien en Data Mapping.
+
+- Jerarquía de carpetas incorrecta
+  - Se usó `/` u otro separador en vez de `->`.
+
+- Error en fechas custom
+  - El valor no sigue uno de los formatos soportados por AIO.
+
+## 10. Cómo debe comportarse el agente al usar esta skill
+
+- Tomar como referencia **primaria** los sample files oficiales.
+- Elegir por defecto el estilo más cercano al pedido del usuario:
+  - `single-line` -> sample clásico con `Test Id` / `Summary`
+  - `multi-line` -> sample clásico multi-line con filas de continuación en blanco
+  - `blank template` -> sample con `Test Key` / `Title`
+- Si el usuario aporta una plantilla interna existente, **preservarla**.
+- Explicar cuándo hará falta **Field Mapping** o **Data Mapping** manual.
+- No presentar headers custom normalizados como si fueran el único estándar válido.
+- Si faltan datos del proyecto (custom fields obligatorios, valores válidos, etc.),
+  pedir sólo lo estrictamente necesario.
+- Priorizar salidas **listas para importar** y lo más cercanas posible al estilo oficial.
+
+## 11. Templates listos para usar
+
+### 11.1 Single-line estilo sample oficial
 
 ```csv
-Existing Case ID,Title,Description,Priority,Status,Labels,Folder,Step Description,Expected Result,Requirements
-1,[Título del caso],[Descripción opcional del objetivo del caso],High,Active,"smoke,regression",[Feature]->[Sub-feature],[Acción 1],[Resultado esperado de acción 1],[PROJ-XX]
-1,[Título del caso],[Descripción opcional del objetivo del caso],High,Active,"smoke,regression",[Feature]->[Sub-feature],[Acción 2],[Resultado esperado de acción 2],[PROJ-XX]
-1,[Título del caso],[Descripción opcional del objetivo del caso],High,Active,"smoke,regression",[Feature]->[Sub-feature],[Acción 3],[Resultado esperado de acción 3],[PROJ-XX]
+Test Id,Summary,Priority,TestSteps,ExpectedResults,Story,Test Type,Component,Release,Status,Creator
+1,User should enter valid Pin to get access to his account.,High,"Insert valid card in the insertion point of ATM
+Enter the valid pin number
+Enter an amount greater than balance",ATM should display a meaningful error message for insufficient balance,ADP-1,Manual,,,P,Noopur
 ```
 
----
+### 11.2 Multi-line estilo sample oficial
 
-## 10. Checklist antes de importar
-
-Antes de subir el CSV a AIO Tests, verificar:
-
-- [ ] Primera fila es el header (no datos).
-- [ ] `Existing Case ID` es numérico, único por caso, consistente en todas sus filas.
-- [ ] `Title` está presente en todas las filas.
-- [ ] `Step Description` y `Expected Result` tienen valores en todas las filas que representan pasos.
-- [ ] Las celdas con comas o saltos de línea están encerradas en `"..."`.
-- [ ] Los `Requirements` usan Jira issue keys válidos del mismo proyecto.
-- [ ] Los `Datasets` usan `|` simple dentro de un dataset y `||` entre datasets.
-- [ ] Los parámetros en pasos usan `<nombreParam>`.
-- [ ] La jerarquía de carpetas usa `->` como separador.
-- [ ] El archivo está guardado en **UTF-8**.
-- [ ] El archivo no supera **100 MB**.
-
----
-
-## 11. Referencia rápida — Valores aceptados
-
-```
-Status:    Active | Draft | Deprecated
-Priority:  Critical | High | Medium | Low | Lowest
-Encoding:  UTF-8
-Separador: coma (,)
-Jerarquía: ->
-Datasets:  | entre valores del mismo dataset, || entre datasets
-Params:    <nombreParametro> en Step Description
-Fechas:    8-Jun-2020 | Jun 8, 2020 | 2020-Jun-8 (entre otros)
-Tamaño:    máximo 100 MB
+```csv
+Test Id,Summary,Priority,TestSteps,ExpectedResults,Story,Test Type,Component,Release,Status,Creator
+1,User should enter valid Pin to get access to his account.,High,Insert valid card in the insertion point of ATM,"ATM Machine should display language page with options such as ENGLISH and SPANISH",ADP-1,Manual,,,P,Noopur
+,,,Enter the valid pin number,ATM should display the account type selection page,,,,,,
+,,,Click on money withdrawal,ATM should display amount entry page.,,,,,,
+,,,Enter an amount greater than balance and click on OK,ATM should display a meaningful insufficient balance message.,,,,,,
 ```
 
----
+### 11.3 Blank template estilo sample oficial
 
-*Para dudas sobre la herramienta: help@aiotests.com*
+```csv
+Test Key,Title,Preconditions,Priority,Test Steps,Data for Steps,Expected Results,Jira Story ID,Test Type,Component,Release,Test Case Status,,Creator
+```
+
+## 12. Checklist breve antes de entregar el CSV
+
+- [ ] ¿El esquema elegido coincide con uno de los samples oficiales o con la plantilla del usuario?
+- [ ] ¿La primera fila es header?
+- [ ] ¿La columna identificadora y la columna de título están presentes?
+- [ ] ¿Cada step tiene expected result?
+- [ ] ¿Las celdas con saltos de línea/comas están entre comillas?
+- [ ] ¿Se explicó si hará falta Field Mapping o Data Mapping?
+- [ ] ¿Los datasets usan `|` / `||` y parámetros `<param>` si aplica?
+- [ ] ¿La jerarquía usa `->` si hay folders?
+- [ ] ¿El archivo final está listo para importar sin sorpresas?
+
+*Soporte: help@aiotests.com*
 *Documentación oficial: https://aiosupport.atlassian.net/wiki/spaces/AioTests*
